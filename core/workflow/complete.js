@@ -48,6 +48,119 @@ const ROOT        = (() => {
     process.exit(1);
   }
 })();
+
+// ── Caller identity (v1.2.8 completion-target fix) ────────────────────────────
+//
+// CALLER_WORKTREE captures the worktree the invoking process actually sits in,
+// independent of ROOT. ROOT is derived from --git-common-dir and always
+// normalizes to the main checkout; that normalization is correct for merge
+// operations but was, until this fix, also being used (by omission) as the
+// implicit source of completion-target selection via worktrees[0]. This
+// constant exists to give resolveTarget() a real, canonical signal instead.
+const CALLER_WORKTREE = (() => {
+  try {
+    const top = execSync('git rev-parse --show-toplevel', { stdio: 'pipe' }).toString().trim();
+    return fs.realpathSync(top);
+  } catch {
+    return null;
+  }
+})();
+
+// Optional additive manual/script selector. Not orchestration identity.
+// Only consulted when the caller could not be bound to a task worktree
+// (i.e. caller === ROOT), or to detect an explicit contradiction against
+// an already-resolved caller worktree.
+const CLI_BRANCH = (() => {
+  const args = process.argv.slice(2);
+  const idx = args.indexOf('--branch');
+  if (idx === -1) return null;
+  const value = args[idx + 1];
+  if (!value || value.startsWith('--')) return { malformed: true };
+  return value;
+})();
+
+// Single non-zero-exit chokepoint for every identity-resolution failure.
+// Existing console.log(...); return; patterns in this file exit 0, which
+// would be a false-success for any future caller (human or Execution
+// Parent) inspecting the process exit status. This guarantees the
+// opposite: fail-closed paths are always observably non-zero.
+const failClosed = (code, detail) => {
+  console.error('\n' + red('  ✗ ' + code));
+  if (detail) console.error(dim('  ' + detail) + '\n');
+  process.exitCode = 1;
+};
+
+// Pure decision function: given the enumerated worktrees, decide the
+// completion target using caller identity first, --branch only as a
+// fallback selector from ROOT. No I/O beyond the realpath comparisons
+// already captured above. No mutation. No prompting.
+//
+// Precedence (caller identity wins over --branch, per architecture ruling):
+//   1. caller resolves to exactly one enumerated worktree
+//        --branch absent or agrees  -> ok, that worktree
+//        --branch present and differs -> IDENTITY_CONFLICT
+//   2. caller === ROOT
+//        --branch malformed         -> BRANCH_ARG_MALFORMED
+//        --branch matches 1 entry   -> ok, that worktree
+//        --branch matches 0 entries -> BRANCH_NOT_FOUND
+//        --branch matches >1 entries-> BRANCH_AMBIGUOUS
+//        --branch absent            -> NEEDS_SELECTION (menu, if TTY)
+//   3. caller resolves to neither ROOT nor an enumerated worktree
+//        -> IDENTITY_CONFLICT
+const resolveTarget = (worktrees) => {
+  if (CALLER_WORKTREE === null) {
+    return { ok: false, code: 'IDENTITY_CONFLICT',
+      detail: 'Could not determine the invoking worktree (git rev-parse --show-toplevel failed).' };
+  }
+
+  const rootReal = fs.realpathSync(ROOT);
+  const matches = worktrees.filter(wt => {
+    try { return fs.realpathSync(wt.path) === CALLER_WORKTREE; }
+    catch { return false; }
+  });
+
+  if (matches.length === 1) {
+    const callerTarget = matches[0];
+    if (CLI_BRANCH && typeof CLI_BRANCH === 'object' && CLI_BRANCH.malformed) {
+      return { ok: false, code: 'BRANCH_ARG_MALFORMED',
+        detail: 'Usage: npm run complete -- --branch <branch-name>' };
+    }
+    if (CLI_BRANCH && CLI_BRANCH !== callerTarget.branch) {
+      return { ok: false, code: 'IDENTITY_CONFLICT',
+        detail: 'Caller worktree is on branch "' + callerTarget.branch +
+          '" but --branch requested "' + CLI_BRANCH + '". Caller identity is authoritative; ' +
+          '--branch may not override it. Run from the intended worktree instead, or omit --branch.' };
+    }
+    return { ok: true, target: callerTarget, via: 'caller-bound' };
+  }
+
+  if (CALLER_WORKTREE === rootReal) {
+    if (CLI_BRANCH && typeof CLI_BRANCH === 'object' && CLI_BRANCH.malformed) {
+      return { ok: false, code: 'BRANCH_ARG_MALFORMED',
+        detail: 'Usage: npm run complete -- --branch <branch-name>' };
+    }
+    if (CLI_BRANCH) {
+      const branchMatches = worktrees.filter(wt => wt.branch === CLI_BRANCH);
+      if (branchMatches.length === 0) {
+        return { ok: false, code: 'BRANCH_NOT_FOUND',
+          detail: '--branch "' + CLI_BRANCH + '" matches no active worktree. Active: ' +
+            worktrees.map(wt => wt.branch).join(', ') };
+      }
+      if (branchMatches.length > 1) {
+        return { ok: false, code: 'BRANCH_AMBIGUOUS',
+          detail: '--branch "' + CLI_BRANCH + '" matches multiple worktrees: ' +
+            branchMatches.map(wt => wt.path).join(', ') };
+      }
+      return { ok: true, target: branchMatches[0], via: 'branch-selected' };
+    }
+    return { ok: false, code: 'NEEDS_SELECTION', detail: null };
+  }
+
+  return { ok: false, code: 'IDENTITY_CONFLICT',
+    detail: 'Invoking directory (' + CALLER_WORKTREE + ') is neither the repo root nor a ' +
+      'registered task worktree. Run from inside the task worktree, from the repo root, or pass --branch.' };
+};
+
 const CONFIG_PATH = path.join(ROOT, '.scaffold', '.config.json');
 const LOCK_PATH   = path.join(ROOT, '.scaffold', '.initialized');
 
@@ -211,12 +324,24 @@ const main = async () => {
 
   let selectedWorktree;
 
-  if (isNonTTY || worktrees.length === 1) {
-    selectedWorktree = worktrees[0];
-    console.log(dim(`\n  Auto-selected: ${selectedWorktree.branch}\n`));
-  } else {
+  const resolution = resolveTarget(worktrees);
+
+  if (resolution.ok) {
+    selectedWorktree = resolution.target;
+    console.log(dim(`\n  Target: ${selectedWorktree.branch} (${resolution.via})\n`));
+  } else if (resolution.code === 'NEEDS_SELECTION') {
+    if (isNonTTY) {
+      failClosed('NO_SELECTOR_NON_TTY',
+        'Cannot determine which task to complete from a non-interactive invocation at the repo root. ' +
+        'Run from inside the task worktree, or pass: npm run complete -- --branch <branch>\n  Active: ' +
+        worktrees.map(wt => wt.branch).join(', '));
+      return;
+    }
     const idx = await arrowSelect('Select task to complete:', worktrees.map(wt => wt.branch));
     selectedWorktree = worktrees[idx];
+  } else {
+    failClosed(resolution.code, resolution.detail);
+    return;
   }
 
   const { path: worktreePath, branch: branchName } = selectedWorktree;
