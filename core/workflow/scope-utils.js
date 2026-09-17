@@ -13,7 +13,10 @@
  * Supports /** suffix, single *, and double ** patterns.
  */
 const matchesGlob = (file, pat) => {
-  if (pat.endsWith('/**')) return file.startsWith(pat.slice(0, -3));
+  if (pat.endsWith('/**')) {
+    const dir = pat.slice(0, -3);
+    return file.startsWith(dir + '/');
+  }
   if (pat.includes('*')) {
     const re = pat.replace(/[.+^${}()|[\]\\]/g, '\\$&')
                   .replace(/\*\*/g, 'DOUBLESTAR')
