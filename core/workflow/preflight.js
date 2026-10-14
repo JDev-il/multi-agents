@@ -43,9 +43,14 @@ const git = (cmd, cwd) => {
  *   escalationReason: string|null
  * }}
  */
-const assess = ({ ROOT, scope, agent, branchName, intent }) => {
+const assess = ({
+  ROOT, scope, agent, branchName, intent,
+  gitRunner = git,
+  existsSync = fs.existsSync,
+  readFileSync = fs.readFileSync,
+}) => {
   // ── Query 1: divergence ───────────────────────────────────────────────────
-  const behindRaw    = git(`git rev-list ${branchName}..main --count`, ROOT);
+  const behindRaw    = gitRunner(`git rev-list ${branchName}..main --count`, ROOT);
   const commitsBehind = parseInt(behindRaw, 10) || 0;
 
   if (commitsBehind === 0) {
@@ -61,18 +66,18 @@ const assess = ({ ROOT, scope, agent, branchName, intent }) => {
   }
 
   // ── Query 2: what merged into main since branch point ────────────────────
-  const mergedLog = git(`git log ${branchName}..main --oneline --no-merges`, ROOT)
+  const mergedLog = gitRunner(`git log ${branchName}..main --oneline --no-merges`, ROOT)
     .split('\n').filter(Boolean);
 
   // ── Query 3: files changed on main since branch point ───────────────────
-  const affectedFiles = git(`git diff ${branchName}...main --name-only`, ROOT)
+  const affectedFiles = gitRunner(`git diff ${branchName}...main --name-only`, ROOT)
     .split('\n').filter(Boolean);
 
   // ── Scope intersection ───────────────────────────────────────────────────
   const scopePolicyPath = path.join(ROOT, '.scaffold', 'scope-policy.json');
   const configPath      = path.join(ROOT, '.scaffold', '.config.json');
 
-  if (!fs.existsSync(scopePolicyPath)) {
+  if (!existsSync(scopePolicyPath)) {
     return {
       decision: 'escalate',
       commitsBehind,
@@ -84,9 +89,9 @@ const assess = ({ ROOT, scope, agent, branchName, intent }) => {
     };
   }
 
-  const scopePolicy = JSON.parse(fs.readFileSync(scopePolicyPath, 'utf8'));
-  const config      = fs.existsSync(configPath)
-    ? JSON.parse(fs.readFileSync(configPath, 'utf8'))
+  const scopePolicy = JSON.parse(readFileSync(scopePolicyPath, 'utf8'));
+  const config      = existsSync(configPath)
+    ? JSON.parse(readFileSync(configPath, 'utf8'))
     : {};
   const scaffolded  = config.scaffolded || {};
 
@@ -107,9 +112,9 @@ const assess = ({ ROOT, scope, agent, branchName, intent }) => {
   }
 
   // ── Query 4: conflict prediction (only when overlap exists) ─────────────
-  const mergeBase      = git(`git merge-base main ${branchName}`, ROOT);
+  const mergeBase      = gitRunner(`git merge-base main ${branchName}`, ROOT);
   const mergeTreeOut   = mergeBase
-    ? git(`git merge-tree ${mergeBase} main ${branchName}`, ROOT)
+    ? gitRunner(`git merge-tree ${mergeBase} main ${branchName}`, ROOT)
     : '';
   const conflictPrediction = mergeTreeOut.includes('<<<<<<<');
 
