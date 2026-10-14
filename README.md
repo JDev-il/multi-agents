@@ -287,6 +287,22 @@ Managed entirely by `agent.js` and `complete.js`. Never edit manually.
 
 ---
 
+## What's new in v1.2.9
+
+**Scope validation fix**
+- Fixed a path boundary bug in directory patterns. From v1.0.54 through v1.2.8, `client/**` also matched sibling paths that share the prefix (for example `clientele/secret.ts` or `clientCONTRACTS.md`), and `backend/**` matched `backend-old/x.ts`, so those files could pass scope validation and merge. Directory patterns now require the path separator.
+- The same fix applies to preflight in-scope file detection, which uses the same matcher
+
+**Tests and release gate**
+- Added a test suite (`npm test`, built-in `node:test`, no new dependencies) covering glob matching, violation detection, scope resolution, and preflight decision paths
+- `npm publish` now runs the tests first and aborts on failure (`prepublishOnly`)
+- GitHub Actions runs the suite on Node 18 and 20 for pushes to main and pull requests
+
+**Internal**
+- preflight `assess()` accepts optional git and filesystem functions for testing; defaults are unchanged
+
+---
+
 ## What's new in v1.1.0
 
 **Init flow**
