@@ -6,7 +6,7 @@
 - chore: test script, prepublishOnly gate, CI on push to main and on pull requests.
 
 ## 1.2.8
-- fix: bind the completion target to the caller worktree identity.
+- fix: `npm run complete` no longer auto-selects the first worktree in non-interactive runs. The completion target is resolved from the caller's worktree identity, a conflicting `--branch` fails closed, and a non-interactive run from the repo root requires an explicit selector. Identity-resolution failures exit non-zero.
 
 ## 1.2.7
 - fix: scope validation was skipped without failing (completion printed a dim info line and continued). Commit 5a768b9 (first shipped in v1.0.61) removed the scope.json writer during a refactor, and completion treated a missing scope.json as nothing to validate. Worktrees launched from v1.0.61 through v1.2.6 had no scope.json, and backend INIT worktrees never had one. Completion now fails closed and regenerates a missing scope.json from the tracking state.
