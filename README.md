@@ -287,6 +287,16 @@ Managed entirely by `agent.js` and `complete.js`. Never edit manually.
 
 ---
 
+## Limitations
+
+multi-agents-cli is a workflow layer around Claude Code, not a sandbox. Known limits as of v1.2.9:
+
+- **Completion-time check.** Scope is validated once, at `npm run complete`, against the committed diff (`git diff --name-only main...HEAD`). It does not stop an agent from writing outside its scope while it works.
+- **Staged files are not re-validated.** Files staged by the auto-commit at completion are not re-checked against the blocked list. This only matters where allowed and blocked patterns overlap in the shipped policy.
+- **No concurrent-write protection.** Tracking and state files are written with plain `fs.writeFileSync` and no locking. Two commands running at the same moment can overwrite each other, and the last write wins.
+- **Shared Orchestration is untested.** This trajectory has not been tested end-to-end. Treat it as experimental.
+- **No update path for scaffolded projects.** `sync` can detect a stale `.workflow/` directory but does not update it. Fixes to workflow scripts do not reach projects that were already scaffolded.
+
 ## What's new in v1.2.9
 
 **Scope validation fix**
