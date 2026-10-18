@@ -2,9 +2,9 @@
 
 A structured workflow tool that orchestrates multiple Claude Code agents working in parallel - each isolated in its own git worktree, owning a specific scope of the codebase.
 
-Instead of one session carrying the entire build, each agent carries a narrower, domain-specific context and stays token-efficient. Shared state files carry progress between sessions and drive prerequisite-aware next-agent recommendations.
+Instead of one session carrying the entire build, each agent carries a narrower, domain-specific context. Shared state files carry progress between sessions and drive prerequisite-aware next-agent recommendations.
 
-**The result:** faster builds, lower token spend, and a clean git history - without sacrificing reliability or context.
+**The result:** each agent works on its own branch in its own worktree, and its git diff is checked against its permitted scope before it merges to main.
 
 ---
 
@@ -80,9 +80,9 @@ Pick the next agent and continue building.
 Choose during `multi-agents init`:
 
 **Multi-Agent Driven Orchestration** *(recommended)*
-Every task starts with `npm run agent`. Each agent works in its own git worktree - an isolated branch and folder that merges back into main via `npm run complete`. Faster builds and lower token spend than a single long session.
+Every task starts with `npm run agent`. Each agent works in its own git worktree - an isolated branch and folder that merges back into main via `npm run complete`.
 
-**Shared Orchestration** *(experimental — less battle-tested than the multi-agent-driven path)*
+**Shared Orchestration** *(experimental — not yet tested end-to-end)*
 You and agents co-build - each owning a defined part of the codebase. Agent tasks run in git worktrees; your work happens directly in the project. Define boundaries before work begins.
 
 ---
@@ -223,7 +223,7 @@ Never edit `BUILD_STATE.md` or `TASKS_HISTORY.md` directly. Workflow scripts own
 
 ## Guard System
 
-The launcher enforces structural rules before any worktree is created:
+The launcher checks structural rules before any worktree is created:
 
 - **Skeleton guard** - LOGIC/FORMS/ROUTING/TESTING require UI completed first (client), API requires INIT completed first (backend)
 - **Prerequisite check** - surfaces unmet dependencies, lets you proceed or repick
