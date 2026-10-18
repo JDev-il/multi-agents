@@ -87,7 +87,7 @@ You and agents co-build - each owning a defined part of the codebase. Agent task
 
 ---
 
-## Supported Frameworks
+## Framework Guides
 
 ### Client
 Next.js - Angular - Vue/Nuxt - SvelteKit - Vite+React - Remix
@@ -138,7 +138,7 @@ Start with `UI` (client) or `INIT` (backend). The launcher recommends the correc
 
 ## Scope Validation
 
-Every agent merge is validated before it touches main.
+The committed diff of every agent merge is validated before it touches main.
 
 When a worktree is created, `agent.js` writes a `scope.json` file declaring the agent's identity and policy. When `npm run complete` runs, it:
 
@@ -259,7 +259,7 @@ my-project/
 ```
 
 Each agent works in its own `worktrees/` folder on a dedicated branch.
-On completion, scope is validated and work merges into `main`. The final `main` branch is a complete, runnable application.
+On completion, scope is validated and work merges into `main`. The intended end state is a complete, runnable application on `main`.
 
 ---
 
@@ -310,19 +310,3 @@ multi-agents-cli is a workflow layer around Claude Code, not a sandbox. Known li
 
 **Internal**
 - preflight `assess()` accepts optional git and filesystem functions for testing; defaults are unchanged
-
----
-
-## What's new in v1.1.0
-
-**Init flow**
-- Step counter (`Step N of 12`) shown throughout the configuration flow
-- Back-navigation fully wired — go back to any previous step and resume without re-answering everything
-
-**After merge**
-- `npm run complete` now surfaces the next recommended agent explicitly based on tracking state
-- `start:client` script written into `package.json` after `client/UI` merges
-- `start:backend` script written into `package.json` after `backend/INIT` merges
-
-**Agent templates**
-- Every agent now includes a `Session Close` block — explicit next-step instructions after Definition of Done
